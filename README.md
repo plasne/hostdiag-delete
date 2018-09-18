@@ -28,13 +28,13 @@ To delete from macOS or Linux:
 To test from Windows:
 
 ```powershell
-.\delete.bat --account <storage_account> --key <storage_key> --table <table_name> \
+.\delete.bat --account <storage_account> --key <storage_key> --table <table_name> `
 --subscription-id <subId> --resource-group <rgName> --hostname <hostname> --mode test
 ```
 
 To delete from Windows:
 
 ```powershell
-.\delete.bat --account <storage_account> --key <storage_key> --table <table_name> \
+.\delete.bat --account <storage_account> --key <storage_key> --table <table_name> `
 --subscription-id <subId> --resource-group <rgName> --hostname <hostname> --mode delete
 ```
