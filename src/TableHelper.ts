@@ -44,21 +44,8 @@ export default class TableHelper {
             this.events.emit("verbose", `getting entities "${this.name}"...`);
             const result = await queryEntities(this.name, query, token);
             for (const entry of result.entries) {
-
-                // simplify the object (could be enhanced to understand typing)
-                /*
-                const simplified: any = {};
-                for (let prop in entry) {
-                    const value: any = entry[prop]
-                    simplified[prop] = value._;
-                }
-
-                // emit the entity
-                emitter.emit("entity", simplified);
-                */
                 emitter.emit("entity", entry);
                 count++;
-
             }
             this.events.emit("verbose", `${count} entities enumerated thusfar...`);
             if (result.continuationToken) {

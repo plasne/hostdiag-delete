@@ -27,9 +27,10 @@ cmd
     .option("-s, --sas <s>", `[REQUIRED?] STORAGE_SAS. The Shared Access Signature querystring. Either STORAGE_SAS or STORAGE_KEY is required.`)
     .option("-k, --key <s>", `[REQUIRED?] STORAGE_KEY. The Azure Storage Account key. Either STORAGE_SAS or STORAGE_KEY is required.`)
     .option("-t, --table <s>", `[REQUIRED] STORAGE_TABLE. The name of the Azure Storage Table.`)
-    .option("-i, --subscription-id <s>", `[REQUIRED] SUBSCRIPTION_ID. The ID of the Azure Subscription containing the HOSTNAME.`)
-    .option("-g, --resource-group <s>", `[REQUIRED] RESOURCE_GROUP. The name of the Resource Group containing the HOSTNAME.`)
-    .option("-h, --hostname <s>", `[REQUIRED] HOSTNAME. The hostname of the VM that has the metrics you want to delete.`)
+    .option("-i, --subscription-id <s>", `[REQUIRED?] SUBSCRIPTION_ID. The ID of the Azure Subscription containing the HOSTNAME.`)
+    .option("-g, --resource-group <s>", `[REQUIRED?] RESOURCE_GROUP. The name of the Resource Group containing the HOSTNAME.`)
+    .option("-h, --hostname <s>", `[REQUIRED?] HOSTNAME. The hostname of the VM that has the metrics you want to delete.`)
+    .option("-p, --partition-key <s>", `[REQUIRED?] PARTITION_KEY. You must either specify SUBSCRIPTION_ID, RESOURCE_GROUP, and HOSTNAME or you can specify a PARTITION_KEY.`)
     .option("-l, --log-level <s>", `LOG_LEVEL. The minimum level to log to the console (error, warn, info, verbose, debug, silly). Defaults to "info".`, /^(error|warn|info|verbose|debug|silly)$/i)
     .option("-m, --mode <s>", `MODE. Can be "delete" or "test" (just shows what would be deleted). Defaults to "test".`)
     .option("-b, --batch-size <i>", `BATCH_SIZE. The number of delete operations to pack into a transaction. Defaults to "10".`, parseInt)
@@ -61,8 +62,22 @@ RETRIES = parseInt(RETRIES);
 if (isNaN(RETRIES))
     RETRIES = 100;
 // create the PARTITION_KEY
-let PARTITION_KEY = `/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Compute/virtualMachines/${HOSTNAME}`;
-PARTITION_KEY = PARTITION_KEY.replace(/\-/g, ":002D").replace(/\./g, ":002E").replace(/\//g, ":002F");
+let PARTITION_KEY = cmd.partitionKey || process.env.PARTITION_KEY;
+if (!PARTITION_KEY) {
+    const unformatted = `/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Compute/virtualMachines/${HOSTNAME}`;
+    PARTITION_KEY = "";
+    for (let i = 0; i < unformatted.length; i++) {
+        const code = unformatted.charCodeAt(i);
+        if ((code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
+            // digit, A-Z, a-z
+            PARTITION_KEY += unformatted[i];
+        }
+        else {
+            // everything else, unicode
+            PARTITION_KEY += ":" + code.toString(16).toUpperCase().padStart(4, "0");
+        }
+    }
+}
 // modify the agents
 const httpAgent = http.globalAgent;
 httpAgent.keepAlive = true;
@@ -82,8 +97,7 @@ const logColors = {
 const transport = new winston.transports.Console({
     format: winston.format.combine(winston.format.timestamp(), winston.format.printf(event => {
         const color = logColors[event.level] || "";
-        //const level = event.level.padStart(7);
-        const level = event.level;
+        const level = event.level.padStart(7);
         return `${event.timestamp} ${color}${level}\x1b[0m: ${event.message}`;
     }))
 });
@@ -269,7 +283,7 @@ const query = new azs.TableQuery()
             }
             else if (mode !== "done") {
                 // delay for 1 second, hopefully there will be more in the buffer
-                logger.debug(`waiting on buffer to refill...`);
+                logger.debug(`waiting on buffer to fill...`);
                 return new Promise(resolve => setTimeout(resolve, 1000));
             }
             else {
