@@ -10,7 +10,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // includes
 const azs = __importStar(require("azure-storage"));
 const util = __importStar(require("util"));
-//import PromisePool from "es6-promise-pool";
 const events_1 = require("events");
 class TableHelper {
     constructor(obj) {

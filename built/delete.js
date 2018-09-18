@@ -18,18 +18,6 @@ const azs = __importStar(require("azure-storage"));
 const TableHelper_1 = __importDefault(require("./TableHelper"));
 const readline = __importStar(require("readline"));
 const es6_promise_pool_1 = __importDefault(require("es6-promise-pool"));
-/*
-import * as fs from "fs";
-import * as util from "util";
-import  * as path from "path";
-import * as request from "request";
-import * as agentkeepalive from "agentkeepalive";
-import * as querystring from "query-string";
-import * as crypto from "crypto";
-
-*/
-// promisify
-//const readdirAsync = util.promisify(fs.readdir);
 // define command line parameters
 cmd
     .version("0.1.0")
