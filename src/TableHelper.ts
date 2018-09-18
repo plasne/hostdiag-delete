@@ -10,6 +10,7 @@ export interface TableHelperJSON {
     account?:          string,
     sas?:              string,
     key?:              string,
+    useGlobalAgent?:   boolean,
     name:              string
 }
 
@@ -45,6 +46,7 @@ export default class TableHelper {
             for (const entry of result.entries) {
 
                 // simplify the object (could be enhanced to understand typing)
+                /*
                 const simplified: any = {};
                 for (let prop in entry) {
                     const value: any = entry[prop]
@@ -53,6 +55,8 @@ export default class TableHelper {
 
                 // emit the entity
                 emitter.emit("entity", simplified);
+                */
+                emitter.emit("entity", entry);
                 count++;
 
             }
@@ -96,6 +100,22 @@ export default class TableHelper {
         });
     }
 
+    public commit(batch: azs.TableBatch) {
+        return new Promise<azs.TableService.BatchResult[]>((resolve, reject) => {
+            try {
+                this.service.executeBatch(this.name, batch, (error, result) => {
+                   if (!error) {
+                       resolve(result);
+                   } else {
+                       reject(error);
+                   }
+                });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
     constructor(obj: TableHelperJSON) {
 
         // establish the service
@@ -103,11 +123,14 @@ export default class TableHelper {
             this.service = obj.service;
         } else if (obj.connectionString) {
             this.service = azs.createTableService(obj.connectionString);
+            if (obj.useGlobalAgent) this.service.enableGlobalHttpAgent = true;
         } else if (obj.account && obj.sas) {
             const host = `https://${obj.account}.table.core.windows.net`;
             this.service = azs.createTableServiceWithSas(host, obj.sas);
+            if (obj.useGlobalAgent) this.service.enableGlobalHttpAgent = true;
         } else if (obj.account && obj.key) {
             this.service = azs.createTableService(obj.account, obj.key);
+            if (obj.useGlobalAgent) this.service.enableGlobalHttpAgent = true;
         } else {
             throw new Error(`You must specify service, connectionString, account/sas, or account/key.`)
         }

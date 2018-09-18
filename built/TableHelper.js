@@ -20,13 +20,19 @@ class TableHelper {
         }
         else if (obj.connectionString) {
             this.service = azs.createTableService(obj.connectionString);
+            if (obj.useGlobalAgent)
+                this.service.enableGlobalHttpAgent = true;
         }
         else if (obj.account && obj.sas) {
             const host = `https://${obj.account}.table.core.windows.net`;
             this.service = azs.createTableServiceWithSas(host, obj.sas);
+            if (obj.useGlobalAgent)
+                this.service.enableGlobalHttpAgent = true;
         }
         else if (obj.account && obj.key) {
             this.service = azs.createTableService(obj.account, obj.key);
+            if (obj.useGlobalAgent)
+                this.service.enableGlobalHttpAgent = true;
         }
         else {
             throw new Error(`You must specify service, connectionString, account/sas, or account/key.`);
@@ -55,13 +61,17 @@ class TableHelper {
             const result = await queryEntities(this.name, query, token);
             for (const entry of result.entries) {
                 // simplify the object (could be enhanced to understand typing)
-                const simplified = {};
+                /*
+                const simplified: any = {};
                 for (let prop in entry) {
-                    const value = entry[prop];
+                    const value: any = entry[prop]
                     simplified[prop] = value._;
                 }
+
                 // emit the entity
                 emitter.emit("entity", simplified);
+                */
+                emitter.emit("entity", entry);
                 count++;
             }
             this.events.emit("verbose", `${count} entities enumerated thusfar...`);
@@ -90,6 +100,23 @@ class TableHelper {
                 }, (error, response) => {
                     if (!error) {
                         resolve(response);
+                    }
+                    else {
+                        reject(error);
+                    }
+                });
+            }
+            catch (error) {
+                reject(error);
+            }
+        });
+    }
+    commit(batch) {
+        return new Promise((resolve, reject) => {
+            try {
+                this.service.executeBatch(this.name, batch, (error, result) => {
+                    if (!error) {
+                        resolve(result);
                     }
                     else {
                         reject(error);

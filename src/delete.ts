@@ -6,6 +6,8 @@ import * as azs from "azure-storage";
 import TableHelper from "./TableHelper";
 import * as readline from "readline";
 import PromisePool from "es6-promise-pool";
+import * as http from "http";
+import * as https from "https";
 
 // define command line parameters
 cmd
@@ -19,7 +21,8 @@ cmd
     .option("-h, --hostname <s>", `[REQUIRED] HOSTNAME. The hostname of the VM that has the metrics you want to delete.`)
     .option("-l, --log-level <s>", `LOG_LEVEL. The minimum level to log to the console (error, warn, info, verbose, debug, silly). Defaults to "info".`, /^(error|warn|info|verbose|debug|silly)$/i)
     .option("-m, --mode <s>", `MODE. Can be "delete" or "test" (just shows what would be deleted). Defaults to "test".`)
-    .option("-x, --concurrency <i>", `CONCURRENCY. The number of delete operations to perform at a time. Defaults to "100".`, parseInt)
+    .option("-b, --batch-size <i>", `BATCH_SIZE. The number of delete operations to pack into a transaction. Defaults to "10".`, parseInt)
+    .option("-x, --concurrency <i>", `CONCURRENCY. The number of transactions to perform at a time. Defaults to "100".`, parseInt)
     .option("-e, --on-error <s>", `ON_ERROR. When an error is encountered during delete, the process can "halt" or "continue". Default is "halt".`)
     .option("-r, --retries <i>", `RETRIES. You can specify a number of times to retry the deletion. Default is "0".`, parseInt)
     .parse(process.argv);
@@ -34,6 +37,9 @@ const SUBSCRIPTION_ID = cmd.subscriptionId || process.env.SUBSCRIPTION_ID;
 const RESOURCE_GROUP = cmd.resourceGroup || process.env.RESOURCE_GROUP;
 const HOSTNAME = cmd.hostname || process.env.HOSTNAME;
 const MODE = cmd.mode || process.env.MODE || "test";
+let BATCH_SIZE = cmd.batchSize || process.env.BATCH_SIZE || 10;
+BATCH_SIZE = parseInt(BATCH_SIZE);
+if (isNaN(BATCH_SIZE)) BATCH_SIZE = 10;
 let CONCURRENCY = cmd.concurrency || process.env.CONCURRENCY || 100;
 CONCURRENCY = parseInt(CONCURRENCY);
 if (isNaN(CONCURRENCY)) CONCURRENCY = 100;
@@ -45,6 +51,14 @@ if (isNaN(RETRIES)) RETRIES = 100;
 // create the PARTITION_KEY
 let PARTITION_KEY = `/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${RESOURCE_GROUP}/providers/Microsoft.Compute/virtualMachines/${HOSTNAME}`;
 PARTITION_KEY = PARTITION_KEY.replace(/\-/g, ":002D").replace(/\./g, ":002E").replace(/\//g, ":002F");
+
+// modify the agents
+const httpAgent: any = http.globalAgent;
+httpAgent.keepAlive = true;
+httpAgent.maxSockets = CONCURRENCY + 20;
+const httpsAgent: any = https.globalAgent;
+httpsAgent.keepAlive = true;
+httpsAgent.maxSockets = CONCURRENCY + 20;
 
 // enable logging
 const logColors: {
@@ -105,14 +119,18 @@ const table = new TableHelper({
 });
 
 // define the return object format
+interface Field {
+    $: string,
+    _: string
+}
+
 interface Entity {
-    RowKey:      string,
-    ".metadata": string
+    RowKey: Field
 }
 
 // define the query
 const query = new azs.TableQuery()
-    .select("RowKey")
+    .select("PartitionKey, RowKey")
     .where("PartitionKey eq ?", PARTITION_KEY);
 
 // execute
@@ -130,7 +148,7 @@ const query = new azs.TableQuery()
                     table
                         .query<Entity>(query)
                         .on("entity", (entity: Entity) => {
-                            logger.log("debug", entity.RowKey);
+                            logger.log("debug", entity.RowKey._);
                             count++;
                         })
                         .on("done", () => {
@@ -178,7 +196,7 @@ const query = new azs.TableQuery()
         let mode = "initializing";
         let count = 0;
         let retries = 0;
-        const buffer: string[] = [];
+        const buffer: Entity[] = [];
 
         // define fetch promise
         const fetch = () => {
@@ -194,7 +212,7 @@ const query = new azs.TableQuery()
                         .on("entity", (entity: Entity) => {
 
                             // fill the buffer
-                            buffer.push(entity.RowKey);
+                            buffer.push(entity);
 
                             // should the buffer get about 50,000 pause it for a while
                             if (buffer.length > 50000) {
@@ -245,13 +263,20 @@ const query = new azs.TableQuery()
         const producer = () => {
             if (buffer.length > 0) {
                 // delete next
-                const rowKey = buffer.pop();
-                if (!rowKey) throw new Error("buffer could not pop().");
-                const deletion: Promise<any> = table.delete(PARTITION_KEY, rowKey).then(() => {
-                    count++;
+
+                // batch operations
+                const set = buffer.splice(0, BATCH_SIZE);
+                const batch = new azs.TableBatch();
+                for (let i = 0; i < set.length; i++) {
+                    batch.deleteEntity(set[i]);
+                }
+
+                // execute the transaction
+                const deletions: Promise<any> = table.commit(batch).then(() => {
+                    count += batch.size();
                 }).catch(error => {
                     if (ON_ERROR.toLowerCase() === "continue") {
-                        logger.error(`There was an error deleting "${rowKey}", but we will continue.`);
+                        logger.error(`There was an error deleting a batch, but we will continue.`);
                         logger.error(error.stack);
                     } else {
                         logger.error(`There was a fatal error. Program aborting after ${count} deleted.`);
@@ -259,7 +284,8 @@ const query = new azs.TableQuery()
                         process.exit(1);
                     }
                 });
-                return deletion;
+                return deletions;
+
             } else if (mode !== "done") {
                 // delay for 1 second, hopefully there will be more in the buffer
                 logger.debug(`waiting on buffer to refill...`);
