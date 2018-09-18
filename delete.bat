@@ -1,0 +1,1 @@
+node ./built/delete.js %*
