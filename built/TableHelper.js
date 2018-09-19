@@ -62,9 +62,9 @@ class TableHelper {
             for (const entry of result.entries) {
                 // emit "primed" this was the first return
                 if (count === 0)
-                    emitter.emit("primed");
+                    emitter.emit("readable");
                 // emit the entity
-                emitter.emit("entity", entry);
+                emitter.emit("data", entry);
                 count++;
             }
             this.events.emit("verbose", `${count} entities enumerated thusfar...`);
@@ -77,6 +77,7 @@ class TableHelper {
                 fetch(result.continuationToken);
             }
             else {
+                emitter.emit("end");
                 emitter.emit("done");
             }
         };

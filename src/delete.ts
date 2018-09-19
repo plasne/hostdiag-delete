@@ -221,10 +221,10 @@ const query = new azs.TableQuery()
                     // start the streaming query
                     const emitter = table
                         .query<Entity>(query)
-                        .on("primed", () => {
+                        .on("readable", () => {
                             mode = "fetching";
                         })
-                        .on("entity", (entity: Entity) => {
+                        .on("data", (entity: Entity) => {
 
                             // fill the buffer
                             buffer.push(entity);
@@ -243,7 +243,7 @@ const query = new azs.TableQuery()
                             }
 
                         })
-                        .on("done", () => {
+                        .on("end", () => {
                             mode = "done";
                             resolve();
                         });

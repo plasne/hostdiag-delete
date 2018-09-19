@@ -210,10 +210,10 @@ const query = new azs.TableQuery()
                     // start the streaming query
                     const emitter = table
                         .query(query)
-                        .on("primed", () => {
+                        .on("readable", () => {
                         mode = "fetching";
                     })
-                        .on("entity", (entity) => {
+                        .on("data", (entity) => {
                         // fill the buffer
                         buffer.push(entity);
                         // should the buffer get about 50,000 pause it for a while
@@ -229,7 +229,7 @@ const query = new azs.TableQuery()
                             }, 1000);
                         }
                     })
-                        .on("done", () => {
+                        .on("end", () => {
                         mode = "done";
                         resolve();
                     });
