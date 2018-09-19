@@ -60,6 +60,10 @@ class TableHelper {
             this.events.emit("verbose", `getting entities "${this.name}"...`);
             const result = await queryEntities(this.name, query, token);
             for (const entry of result.entries) {
+                // emit "primed" this was the first return
+                if (count === 0)
+                    emitter.emit("primed");
+                // emit the entity
                 emitter.emit("entity", entry);
                 count++;
             }

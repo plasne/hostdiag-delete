@@ -216,11 +216,14 @@ const query = new azs.TableQuery()
                 try {
 
                     // reset counter
-                    mode = "fetching";
+                    mode = "initializing";
 
                     // start the streaming query
                     const emitter = table
                         .query<Entity>(query)
+                        .on("primed", () => {
+                            mode = "fetching";
+                        })
                         .on("entity", (entity: Entity) => {
 
                             // fill the buffer
@@ -298,9 +301,13 @@ const query = new azs.TableQuery()
                 });
                 return deletions;
 
+            } else if (mode === "initializing") {
+                // waiting on the first population of the buffer
+                //  NOTE: suppressing messages
+                return new Promise(resolve => setTimeout(resolve, 1000));
             } else if (mode !== "done") {
                 // delay for 1 second, hopefully there will be more in the buffer
-                logger.debug(`waiting on buffer to fill...`);
+                logger.debug(`waiting on buffer to refill...`);
                 return new Promise(resolve => setTimeout(resolve, 1000));
             } else {
                 // we are done
